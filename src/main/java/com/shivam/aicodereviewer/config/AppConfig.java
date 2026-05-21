@@ -1,4 +1,4 @@
-package com.shivam.aicoderereviewer.config;
+package com.shivam.aicodereviewer.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
