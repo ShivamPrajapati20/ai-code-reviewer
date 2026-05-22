@@ -43,6 +43,7 @@ public class ClaudeService {
         String codeDiff, String filename) {
 
         log.info("Analyzing file: {}", filename);
+        log.info("testing the webhook");
 
         // If there's no diff (e.g. binary file),
         // skip it — nothing to review
