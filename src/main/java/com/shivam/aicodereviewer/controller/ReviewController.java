@@ -7,7 +7,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import com.shivam.aicodereviewer.service.ClaudeService;
+import com.shivam.aicodereviewer.service.ReviewService;
 import com.shivam.aicodereviewer.dto.CodeReviewComment;
+import com.shivam.aicodereviewer.model.Review;
+import com.shivam.aicodereviewer.model.ReviewComment;
+import com.shivam.aicodereviewer.repository.ReviewRepository;
+import com.shivam.aicodereviewer.repository.ReviewCommentRepository;
+import org.springframework.http.ResponseEntity;
+import java.util.UUID;
 
 // @RequiredArgsConstructor automatically creates
 // a constructor for all final fields
@@ -19,6 +26,9 @@ public class ReviewController {
 
     private final GitHubService gitHubService;
     private final ClaudeService claudeService;
+    private final ReviewService reviewService;
+    private final ReviewRepository reviewRepository;
+    private final ReviewCommentRepository commentRepository;
 
     // Test endpoint to verify GitHub integration
     // Call it like: GET /api/review/test?owner=shivam&repo=my-project&prNumber=1
@@ -43,29 +53,33 @@ public class ReviewController {
             .getPullRequestFiles(owner, repo, prNumber);
     }
 
-    // Main endpoint to analyze a PR
-    @GetMapping("/analyze")
-    public List<CodeReviewComment> analyzePR(
+    @PostMapping("/analyze")
+    public ResponseEntity<?> analyzePR(
         @RequestParam String owner,
         @RequestParam String repo,
         @RequestParam Integer prNumber) {
 
-        // Step 1: Get all changed files from GitHub
-        List<PullRequestFile> files = gitHubService
-            .getPullRequestFiles(owner, repo, prNumber);
+        // ReviewService handles everything:
+        // PR check → fetch files → save to DB
+        // → Claude analysis → post to GitHub
+        Review review = reviewService
+            .processReview(owner, repo, prNumber);
 
-        // Step 2: For each file, send diff to Claude
-        // flatMap flattens List<List<>> into List<>
-        return files.stream()
-            // Skip files with no diff
-            // (deleted files, binary files etc.)
-            .filter(file -> file.getPatch() != null)
-            // Analyze each file with Claude
-            .flatMap(file -> claudeService
-                .analyzeCode(
-                    file.getPatch(),
-                    file.getFilename())
-                .stream())
-            .toList();
+        return ResponseEntity.ok(review);
+    }
+
+    // Fetch all reviews for a repo
+    // Used by frontend history page
+    @GetMapping("/reviews")
+    public List<Review> getReviews(
+        @RequestParam String repoName) {
+        return reviewRepository.findByRepoNameOrderByCreatedAtDesc(repoName);
+    }
+
+    // Fetch all comments for a specific review
+    @GetMapping("/reviews/{id}/comments")
+    public List<ReviewComment> getComments(
+        @PathVariable UUID id) {
+        return commentRepository.findByReviewId(id);
     }
 }

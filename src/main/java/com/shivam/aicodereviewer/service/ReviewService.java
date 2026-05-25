@@ -12,6 +12,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
+import com.shivam.aicodereviewer.exception.PRNotFoundException;
+import com.shivam.aicodereviewer.model.PullRequestFileEntity;
+import com.shivam.aicodereviewer.repository.PullRequestFileRepository;
+import com.shivam.aicodereviewer.exception.RepositoryNotFoundException;
+import com.shivam.aicodereviewer.exception.UserNotFoundException;
 
 @Slf4j
 @Service
@@ -22,7 +27,7 @@ public class ReviewService {
     private final ClaudeService claudeService;
     private final ReviewRepository reviewRepository;
     private final ReviewCommentRepository commentRepository;
-
+    private final PullRequestFileRepository pullRequestFileRepository;
     // Main method that orchestrates the entire flow:
     // 1. Fetch PR details from GitHub
     // 2. Fetch changed files from GitHub
@@ -35,13 +40,33 @@ public class ReviewService {
         log.info("Starting review for {}/{} PR#{}",
             owner, repo, prNumber);
 
-        // Step 1: Get PR details (title, url etc.)
+
+        // Step 1: Check GitHub user exists
+        if (!gitHubService.userExists(owner)) {
+            throw new UserNotFoundException(owner);
+        }
+
+        // Step 2: Check repo exists
+        if (!gitHubService.repoExists(owner, repo)) {
+            throw new RepositoryNotFoundException(owner, repo);
+        }
+
+        // Step 3: Check PR exists FIRST
+        // Throws PRNotFoundException if not found
+        // GlobalExceptionHandler converts it to 404
+        if (!gitHubService.pullRequestExists(
+                owner, repo, prNumber)) {
+            throw new PRNotFoundException(
+                owner, repo, prNumber);
+        }
+
+        // Step 2: Fetch PR details
         PullRequestDetails prDetails = gitHubService
             .getPullRequestDetails(owner, repo, prNumber);
 
-        // Step 2: Create and save Review record to DB
-        // We save it now so we have the ID to attach
-        // comments to later
+        // Step 3: Save Review to DB first
+        // We need the review ID to link files
+        // and comments to it
         Review review = Review.builder()
             .repoName(owner + "/" + repo)
             .prNumber(prNumber)
@@ -50,39 +75,62 @@ public class ReviewService {
             .build();
 
         review = reviewRepository.save(review);
-        log.info("Review saved with ID: {}", review.getId());
+        log.info("Review saved: {}", review.getId());
 
-        // Step 3: Get all changed files from GitHub
+
+        // Step 4: Fetch changed files from GitHub
         List<PullRequestFile> files = gitHubService
             .getPullRequestFiles(owner, repo, prNumber);
 
         log.info("Found {} changed files", files.size());
 
-        // Step 4: Analyze each file with Claude
-        // and save comments to DB
-        List<ReviewComment> allComments = new ArrayList<>();
+        // Step 5: Store files in DB
+        // We save ALL files — even ones with no patch
+        // so we have a complete record of what changed
+        List<PullRequestFileEntity> fileEntities =
+            new ArrayList<>();
 
         for (PullRequestFile file : files) {
+            PullRequestFileEntity entity =
+                PullRequestFileEntity.builder()
+                    .review(review)
+                    .filename(file.getFilename())
+                    .status(file.getStatus())
+                    .patch(file.getPatch())
+                    .additions(file.getAdditions())
+                    .deletions(file.getDeletions())
+                    .build();
+
+            fileEntities.add(entity);
+        }
+
+        pullRequestFileRepository.saveAll(fileEntities);
+        log.info("Saved {} files to DB",
+            fileEntities.size());
+
+        // Step 6: Analyze files with Claude
+        // Only files that have a patch (code changes)
+        List<ReviewComment> allComments = new ArrayList<>();
+
+        for (PullRequestFileEntity file : fileEntities) {
 
             // Skip files with no diff
             if (file.getPatch() == null ||
                 file.getPatch().isBlank()) {
-                log.info("Skipping file (no patch): {}",
+                log.info("Skipping (no patch): {}",
                     file.getFilename());
                 continue;
             }
 
-            log.info("Analyzing file: {}",
-                file.getFilename());
+            log.info("Analyzing: {}", file.getFilename());
 
-            // Get review comments from Claude
+            // Send to Claude for review
             List<CodeReviewComment> claudeComments =
                 claudeService.analyzeCode(
                     file.getPatch(),
                     file.getFilename());
 
-            // Convert Claude DTOs to DB entities
-            // and attach to this review
+            // Convert to DB entities
             for (CodeReviewComment cc : claudeComments) {
                 ReviewComment comment = ReviewComment
                     .builder()
@@ -99,29 +147,26 @@ public class ReviewService {
             }
         }
 
-        // Step 5: Save all comments to DB in one batch
-        // saveAll is more efficient than saving one by one
+        // Step 7: Save all comments to DB
         commentRepository.saveAll(allComments);
-        log.info("Saved {} comments to DB",
-            allComments.size());
+        log.info("Saved {} comments", allComments.size());
 
-        // Step 6: Format all comments as markdown
-        // and post to GitHub PR
+        // Step 8: Post formatted comment to GitHub PR
         if (!allComments.isEmpty()) {
             String markdown = formatAsMarkdown(
                 allComments, prDetails.getTitle());
-
             gitHubService.postPullRequestComment(
                 owner, repo, prNumber, markdown);
-
-            log.info("Review posted to GitHub PR");
         } else {
-            // Post a clean bill of health comment
             gitHubService.postPullRequestComment(
                 owner, repo, prNumber,
                 "✅ **AI Code Review** — No issues found!");
         }
 
+        log.info("Review complete: {}", review.getId());
+
+        // Step 9: Return the saved review
+        // Frontend uses the ID to fetch comments
         return review;
     }
 
