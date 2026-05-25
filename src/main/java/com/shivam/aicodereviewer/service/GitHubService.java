@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import java.util.List;
+import reactor.core.publisher.Mono;
 
 // @Slf4j gives us a free "log" variable
 // so we can do log.info(), log.error() etc.
@@ -129,5 +130,73 @@ public class GitHubService {
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t");
+    }
+
+    // Checks if a PR exists before processing
+    // Returns true if PR exists, false if not found
+    public boolean pullRequestExists(
+        String owner, String repo, Integer prNumber) {
+
+        try {
+            githubWebClient
+                .get()
+                .uri("/repos/{owner}/{repo}/pulls/{prNumber}",
+                    owner, repo, prNumber)
+                .retrieve()
+                .onStatus(
+                    status -> status.value() == 404,
+                    response -> Mono.error(
+                        new RuntimeException("PR not found")))
+                .bodyToMono(String.class)
+                .block();
+
+            return true;
+
+        } catch (Exception e) {
+            log.warn("PR not found: {}/{} #{}",
+                owner, repo, prNumber);
+            return false;
+        }
+    }
+
+    // Check if a GitHub user or org exists
+    public boolean userExists(String owner) {
+        try {
+            githubWebClient
+                .get()
+                .uri("/users/{owner}", owner)
+                .retrieve()
+                .onStatus(
+                    status -> status.value() == 404,
+                    response -> Mono.error(
+                        new RuntimeException("User not found")))
+                .bodyToMono(String.class)
+                .block();
+            return true;
+        } catch (Exception e) {
+            log.warn("GitHub user not found: {}", owner);
+            return false;
+        }
+    }
+
+    // Check if a repository exists
+    public boolean repoExists(
+        String owner, String repo) {
+        try {
+            githubWebClient
+                .get()
+                .uri("/repos/{owner}/{repo}", owner, repo)
+                .retrieve()
+                .onStatus(
+                    status -> status.value() == 404,
+                    response -> Mono.error(
+                        new RuntimeException("Repo not found")))
+                .bodyToMono(String.class)
+                .block();
+            return true;
+        } catch (Exception e) {
+            log.warn("Repo not found: {}/{}", owner, repo);
+            return false;
+        }
     }
 }
