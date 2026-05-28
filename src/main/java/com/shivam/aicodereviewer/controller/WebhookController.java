@@ -121,7 +121,7 @@ public class WebhookController {
             new Thread(() -> {
                 try {
                     reviewService.processReview(
-                        owner, repo, prNumber);
+                        owner, repo, prNumber, false);
                 } catch (Exception e) {
                     log.error(
                         "Error processing review: {}",

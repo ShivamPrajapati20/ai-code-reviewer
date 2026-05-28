@@ -1,35 +1,43 @@
-// Displays colored badge based on severity level
-// Critical = red, Warning = yellow, Suggestion = blue
+import {
+  AlertTriangle,
+  ShieldAlert,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
+
 type Props = {
   severity: string;
 };
 
 export default function SeverityBadge({ severity }: Props) {
-  const styles: Record<string, string> = {
-    critical:
-      "bg-red-100 text-red-700 border border-red-300",
-    warning:
-      "bg-yellow-100 text-yellow-700 border border-yellow-300",
-    suggestion:
-      "bg-blue-100 text-blue-700 border border-blue-300",
-  };
-
-  const icons: Record<string, string> = {
-    critical: "🔴",
-    warning: "🟡",
-    suggestion: "🔵",
+  const styles: Record<string, { className: string; icon: LucideIcon }> = {
+    critical: {
+      className: "bg-rose-100 text-rose-700 ring-rose-200",
+      icon: ShieldAlert,
+    },
+    warning: {
+      className: "bg-amber-100 text-amber-800 ring-amber-200",
+      icon: AlertTriangle,
+    },
+    suggestion: {
+      className: "bg-sky-100 text-sky-700 ring-sky-200",
+      icon: Sparkles,
+    },
   };
 
   const style =
-    styles[severity] ||
-    "bg-gray-100 text-gray-700 border border-gray-300";
+    styles[severity] || {
+      className: "bg-slate-100 text-slate-700 ring-slate-200",
+      icon: Sparkles,
+    };
+  const Icon = style.icon;
 
   return (
     <span
-      className={`px-2 py-1 rounded-full text-xs 
-        font-semibold ${style}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold capitalize ring-1 ${style.className}`}
     >
-      {icons[severity]} {severity.toUpperCase()}
+      <Icon className="h-3.5 w-3.5" />
+      {severity}
     </span>
   );
 }
