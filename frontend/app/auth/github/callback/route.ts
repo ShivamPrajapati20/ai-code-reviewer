@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
   const storedState = request.cookies.get(authCookies.state)?.value;
   const clientId = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
 
   if (!clientId || !clientSecret) {
     return authError(request, "GitHub login is not configured.");
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
         code,
         redirect_uri: new URL(
           "/auth/github/callback",
-          request.url
+          appUrl
         ).toString(),
       }),
     }
