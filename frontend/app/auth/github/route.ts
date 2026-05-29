@@ -3,9 +3,17 @@ import { authCookies, createOAuthState } from "@/lib/auth";
 
 export function GET(request: NextRequest) {
   const clientId = process.env.GITHUB_CLIENT_ID;
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+
+  if (request.nextUrl.origin !== appUrl) {
+    return NextResponse.redirect(
+      new URL("/auth/github", appUrl)
+    );
+  }
 
   if (!clientId) {
-    const url = new URL("/", request.url);
+    const url = new URL("/", appUrl);
     url.searchParams.set(
       "authError",
       "GitHub login is not configured. Add OAuth credentials to frontend/.env.local."
@@ -14,8 +22,6 @@ export function GET(request: NextRequest) {
   }
 
   const state = createOAuthState();
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
   const redirectUri = new URL("/auth/github/callback", appUrl);
   const githubUrl = new URL("https://github.com/login/oauth/authorize");
   githubUrl.searchParams.set("client_id", clientId);

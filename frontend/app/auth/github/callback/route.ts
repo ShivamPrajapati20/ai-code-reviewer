@@ -23,6 +23,15 @@ export async function GET(request: NextRequest) {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
 
+  if (request.nextUrl.origin !== appUrl) {
+    const url = new URL("/auth/github", appUrl);
+    url.searchParams.set(
+      "authError",
+      "Please start GitHub login from the configured app URL."
+    );
+    return NextResponse.redirect(url);
+  }
+
   if (!clientId || !clientSecret) {
     return authError(request, "GitHub login is not configured.");
   }
@@ -76,7 +85,7 @@ export async function GET(request: NextRequest) {
   }
 
   const user = (await userResponse.json()) as GitHubUserResponse;
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(new URL("/", appUrl));
   response.cookies.delete(authCookies.state);
   response.cookies.set(
     authCookies.session,
@@ -98,7 +107,9 @@ export async function GET(request: NextRequest) {
 }
 
 function authError(request: NextRequest, message: string) {
-  const url = new URL("/", request.url);
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const url = new URL("/", appUrl);
   url.searchParams.set("authError", message);
   return NextResponse.redirect(url);
 }
