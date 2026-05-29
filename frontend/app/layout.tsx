@@ -2,8 +2,19 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Code Reviewer",
-  description: "Get instant AI-powered code reviews for your GitHub PRs. Just enter the repo and PR number to see detailed feedback and suggestions.",
+  title: "GitHub PR Reviewer",
+  description:
+    "Sign in with GitHub and review open pull requests with AI-powered feedback, severity summaries, and suggested fixes.",
+  icons: {
+    icon: [
+      {
+        url: "/icon.svg",
+        type: "image/svg+xml",
+      },
+    ],
+    shortcut: "/icon.svg",
+    apple: "/apple-icon.svg",
+  },
 };
 
 export default function RootLayout({

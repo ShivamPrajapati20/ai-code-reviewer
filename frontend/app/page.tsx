@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -12,6 +12,8 @@ import {
   ExternalLink,
   FileCode2,
   GitPullRequest,
+  Lock,
+  LogOut,
   Loader2,
   RefreshCw,
   Search,
@@ -44,6 +46,13 @@ type Review = {
 type SeverityKey = "critical" | "warning" | "suggestion";
 
 type GroupedComments = Record<SeverityKey, Comment[]>;
+
+type AuthUser = {
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  profileUrl: string;
+};
 
 const emptyGrouped: GroupedComments = {
   critical: [],
@@ -94,12 +103,52 @@ export default function Home() {
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
   const [prNumber, setPrNumber] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
   const [grouped, setGrouped] = useState<GroupedComments>(emptyGrouped);
   const [error, setError] = useState("");
   const [openSection, setOpenSection] = useState<SeverityKey | "">("");
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const response = await fetch("/auth/session");
+        const session = await response.json();
+
+        if (session.authenticated && session.user) {
+          setUser(session.user);
+          setOwner(session.user.login);
+        }
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    loadSession();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const intervalId = window.setInterval(async () => {
+      const response = await fetch("/auth/session");
+      const session = await response.json();
+
+      if (!session.authenticated) {
+        setUser(null);
+        setOwner("");
+        setReview(null);
+        setGrouped(emptyGrouped);
+      }
+    }, 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [user]);
 
   const total = severityOrder.reduce(
     (sum, key) => sum + grouped[key].length,
@@ -146,7 +195,12 @@ export default function Home() {
       : "Nice polish";
 
   const handleAnalyze = async (forceRefresh = false) => {
-    if (!owner.trim() || !repo.trim() || !prNumber.trim()) {
+    if (!user) {
+      setError("Please sign in with GitHub first.");
+      return;
+    }
+
+    if (!repo.trim() || !prNumber.trim()) {
       setError("Please fill in owner, repository, and PR number.");
       return;
     }
@@ -159,7 +213,7 @@ export default function Home() {
 
     try {
       const reviewData = await analyzePR(
-        owner.trim(),
+        user.login,
         repo.trim(),
         Number(prNumber),
         forceRefresh
@@ -204,7 +258,30 @@ export default function Home() {
     }
   };
 
+  const handleLogout = async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    setUser(null);
+    setOwner("");
+    setReview(null);
+    setGrouped(emptyGrouped);
+  };
+
   const repoLabel = owner && repo ? `${owner}/${repo}` : "Repository";
+
+  if (authLoading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f7f3ec] px-4 text-slate-950">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-700" />
+          Checking GitHub login
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
 
   return (
     <main className="min-h-screen bg-[#f7f3ec] text-slate-950">
@@ -214,6 +291,40 @@ export default function Home() {
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
               <Bot className="h-3.5 w-3.5" />
               AI powered PR review cockpit
+            </div>
+
+            <div className="flex max-w-xl items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                {user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="h-11 w-11 rounded-xl"
+                  />
+                ) : (
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-950 text-white">
+                    <GitPullRequest className="h-5 w-5" />
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950">
+                    {user.name || user.login}
+                  </p>
+                  <p className="truncate text-xs font-semibold text-slate-500">
+                    @{user.login}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
 
             <div className="max-w-2xl space-y-4">
@@ -264,6 +375,7 @@ export default function Home() {
                       placeholder="shivam"
                       value={owner}
                       onChange={setOwner}
+                      disabled
                     />
                     <Field
                       label="Repository"
@@ -557,29 +669,118 @@ export default function Home() {
   );
 }
 
+function LoginScreen() {
+  const [authError] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return params.get("authError") || "";
+  });
+
+  return (
+    <main className="grid min-h-screen bg-[#f7f3ec] px-4 py-6 text-slate-950">
+      <section className="mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-8 lg:grid-cols-[1fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+            <GitPullRequest className="h-3.5 w-3.5" />
+            GitHub sign-in required
+          </div>
+
+          <div className="max-w-2xl space-y-4">
+            <h1 className="text-4xl font-black tracking-normal text-slate-950 sm:text-5xl">
+              Sign in with GitHub to review your pull requests.
+            </h1>
+            <p className="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+              Connect your GitHub account and get focused AI feedback for
+              active pull requests.
+            </p>
+          </div>
+
+          <a
+            href="/auth/github"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-slate-800"
+          >
+            <GitPullRequest className="h-4 w-4" />
+            Continue with GitHub
+            <ArrowRight className="h-4 w-4" />
+          </a>
+
+          {authError && (
+            <div className="max-w-xl rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              {authError}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <div className="absolute -inset-3 rounded-[2rem] border border-white/80 bg-white/60 shadow-2xl shadow-slate-300/50" />
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-2xl">
+            <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              </div>
+              <Lock className="h-4 w-4 text-emerald-300" />
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Repository
+                </p>
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-slate-300">
+                  <span>Choose a repository and pull request</span>
+                  <GitPullRequest className="h-4 w-4 text-emerald-300" />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Review
+                </p>
+                <p className="text-sm leading-6 text-slate-300">
+                  See severity summaries, file-level comments, and practical
+                  fixes in one clean review board.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function Field({
   label,
   placeholder,
   value,
   onChange,
   type = "text",
+  disabled = false,
 }: {
   label: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-slate-400">
-        {label}
+      <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+        {disabled && <Lock className="h-3 w-3" />}
+        <span>{label}</span>
       </span>
       <input
         type={type}
-        className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300 focus:bg-white/[0.12] focus:ring-4 focus:ring-emerald-300/10"
+        className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300 focus:bg-white/[0.12] focus:ring-4 focus:ring-emerald-300/10 disabled:cursor-not-allowed disabled:bg-white/[0.04] disabled:text-slate-400"
         placeholder={placeholder}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
