@@ -205,7 +205,7 @@ Create `frontend/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_APP_URL=http://127.0.0.1:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 GITHUB_CLIENT_ID=your_github_oauth_client_id
 GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 AUTH_SECRET=replace_with_a_long_random_string
@@ -227,8 +227,8 @@ Create a GitHub OAuth App:
 
 ```text
 Application name: GitHub PR Reviewer
-Homepage URL: http://127.0.0.1:3000
-Authorization callback URL: http://127.0.0.1:3000/auth/github/callback
+Homepage URL: http://localhost:3000
+Authorization callback URL: http://localhost:3000/auth/github/callback
 ```
 
 Copy the Client ID and Client Secret into `frontend/.env.local`.
@@ -240,10 +240,10 @@ http://localhost:3000/auth/github/callback
 http://127.0.0.1:3000/auth/github/callback
 ```
 
-If your OAuth App uses `127.0.0.1`, open the app at `http://127.0.0.1:3000` and set:
+If your OAuth App uses `localhost`, open the app at `http://localhost:3000` and set:
 
 ```env
-NEXT_PUBLIC_APP_URL=http://127.0.0.1:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 ## Running The App
@@ -280,13 +280,13 @@ npm run dev
 Frontend runs at:
 
 ```text
-http://127.0.0.1:3000
+http://localhost:3000
 ```
 
 The frontend proxies backend calls through:
 
 ```text
-http://127.0.0.1:3000/backend
+http://localhost:3000/backend
 ```
 
 ## API Reference
@@ -463,7 +463,7 @@ http://localhost:8080/health
 Check that the frontend proxy works:
 
 ```text
-http://127.0.0.1:3000/backend/health
+http://localhost:3000/backend/health
 ```
 
 ### Merged PR is rejected
