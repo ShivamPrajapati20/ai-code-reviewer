@@ -97,26 +97,6 @@ flowchart LR
     Backend --> Frontend
 ```
 
-## Screenshots
-
-Screenshots should be added after GitHub OAuth credentials are configured locally, because the main app screen now requires login.
-
-Recommended screenshot files:
-
-```text
-docs/screenshots/login.png
-docs/screenshots/review-dashboard.png
-docs/screenshots/review-results.png
-```
-
-Recommended Markdown once screenshots are captured:
-
-```md
-![Login screen](docs/screenshots/login.png)
-![Review dashboard](docs/screenshots/review-dashboard.png)
-![Review results](docs/screenshots/review-results.png)
-```
-
 ## Tech Stack
 
 ### Frontend
