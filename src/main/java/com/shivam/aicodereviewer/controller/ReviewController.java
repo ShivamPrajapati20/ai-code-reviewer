@@ -15,6 +15,8 @@ import com.shivam.aicodereviewer.repository.ReviewRepository;
 import com.shivam.aicodereviewer.repository.ReviewCommentRepository;
 import org.springframework.http.ResponseEntity;
 import java.util.UUID;
+import com.shivam.aicodereviewer.dto.ReviewResponse;
+import com.shivam.aicodereviewer.dto.CommentResponse;
 
 // @RequiredArgsConstructor automatically creates
 // a constructor for all final fields
@@ -53,19 +55,21 @@ public class ReviewController {
             .getPullRequestFiles(owner, repo, prNumber);
     }
 
+    // forceRefresh=true bypasses cache
+    // and runs a fresh review
     @PostMapping("/analyze")
-    public ResponseEntity<?> analyzePR(
+    public ResponseEntity<ReviewResponse> analyzePR(
         @RequestParam String owner,
         @RequestParam String repo,
-        @RequestParam Integer prNumber) {
+        @RequestParam Integer prNumber,
+        @RequestParam(defaultValue = "false")
+            boolean forceRefresh) {
 
-        // ReviewService handles everything:
-        // PR check → fetch files → save to DB
-        // → Claude analysis → post to GitHub
-        Review review = reviewService
-            .processReview(owner, repo, prNumber);
+        ReviewResponse response = reviewService
+            .processReview(
+                owner, repo, prNumber, forceRefresh);
 
-        return ResponseEntity.ok(review);
+        return ResponseEntity.ok(response);
     }
 
     // Fetch all reviews for a repo
@@ -76,10 +80,22 @@ public class ReviewController {
         return reviewRepository.findByRepoNameOrderByCreatedAtDesc(repoName);
     }
 
-    // Fetch all comments for a specific review
-    @GetMapping("/reviews/{id}/comments")
-    public List<ReviewComment> getComments(
+    @GetMapping("/{id}/comments")
+    public List<CommentResponse> getComments(
         @PathVariable UUID id) {
-        return commentRepository.findByReviewId(id);
+
+        return commentRepository
+            .findByReviewId(id)
+            .stream()
+            .map(c -> CommentResponse.builder()
+                .id(c.getId())
+                .severity(c.getSeverity())
+                .category(c.getCategory())
+                .lineNumber(c.getLineNumber())
+                .issue(c.getIssue())
+                .fix(c.getFix())
+                .fileName(c.getFileName())
+                .build())
+            .toList();
     }
 }

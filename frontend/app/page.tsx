@@ -1,8 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Code2,
+  ExternalLink,
+  FileCode2,
+  GitPullRequest,
+  Loader2,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  Sparkles,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { analyzePR, getReviewComments } from "@/lib/api";
-import ReviewCard from "@/components/ReviewCard";
 
 type Comment = {
   id: string;
@@ -20,7 +38,57 @@ type Review = {
   prNumber: number;
   prTitle: string;
   prUrl: string;
+  cached: boolean;
 };
+
+type SeverityKey = "critical" | "warning" | "suggestion";
+
+type GroupedComments = Record<SeverityKey, Comment[]>;
+
+const emptyGrouped: GroupedComments = {
+  critical: [],
+  warning: [],
+  suggestion: [],
+};
+
+const severityConfig = {
+  critical: {
+    label: "Critical",
+    icon: ShieldAlert,
+    pill: "bg-rose-100 text-rose-700 ring-rose-200",
+    card: "border-rose-200 bg-rose-50/70",
+    active: "border-rose-400 bg-rose-50 shadow-rose-100",
+    dot: "bg-rose-500",
+  },
+  warning: {
+    label: "Warnings",
+    icon: AlertTriangle,
+    pill: "bg-amber-100 text-amber-800 ring-amber-200",
+    card: "border-amber-200 bg-amber-50/70",
+    active: "border-amber-400 bg-amber-50 shadow-amber-100",
+    dot: "bg-amber-500",
+  },
+  suggestion: {
+    label: "Suggestions",
+    icon: Sparkles,
+    pill: "bg-sky-100 text-sky-700 ring-sky-200",
+    card: "border-sky-200 bg-sky-50/70",
+    active: "border-sky-400 bg-sky-50 shadow-sky-100",
+    dot: "bg-sky-500",
+  },
+} satisfies Record<
+  SeverityKey,
+  {
+    label: string;
+    icon: LucideIcon;
+    pill: string;
+    card: string;
+    active: string;
+    dot: string;
+  }
+>;
+
+const severityOrder: SeverityKey[] = ["critical", "warning", "suggestion"];
 
 export default function Home() {
   const [owner, setOwner] = useState("");
@@ -28,224 +96,591 @@ export default function Home() {
   const [prNumber, setPrNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [grouped, setGrouped] = useState<GroupedComments>(emptyGrouped);
   const [error, setError] = useState("");
+  const [openSection, setOpenSection] = useState<SeverityKey | "">("");
+  const [query, setQuery] = useState("");
 
-  const handleAnalyze = async () => {
-    if (!owner || !repo || !prNumber) {
-      setError("Please fill in all fields");
+  const total = severityOrder.reduce(
+    (sum, key) => sum + grouped[key].length,
+    0
+  );
+
+  const filteredGrouped = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return grouped;
+    }
+
+    return severityOrder.reduce((acc, key) => {
+      acc[key] = grouped[key].filter((comment) =>
+        [
+          comment.fileName,
+          comment.category,
+          comment.issue,
+          comment.fix,
+          String(comment.lineNumber ?? ""),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery)
+      );
+
+      return acc;
+    }, { ...emptyGrouped });
+  }, [grouped, query]);
+
+  const filteredTotal = severityOrder.reduce(
+    (sum, key) => sum + filteredGrouped[key].length,
+    0
+  );
+
+  const healthLabel =
+    total === 0
+      ? "Clean"
+      : grouped.critical.length > 0
+      ? "Needs attention"
+      : grouped.warning.length > 0
+      ? "Review advised"
+      : "Nice polish";
+
+  const handleAnalyze = async (forceRefresh = false) => {
+    if (!owner.trim() || !repo.trim() || !prNumber.trim()) {
+      setError("Please fill in owner, repository, and PR number.");
       return;
     }
+
     setLoading(true);
     setError("");
     setReview(null);
-    setComments([]);
+    setGrouped(emptyGrouped);
+    setQuery("");
 
     try {
       const reviewData = await analyzePR(
-        owner, repo, parseInt(prNumber)
+        owner.trim(),
+        repo.trim(),
+        Number(prNumber),
+        forceRefresh
       );
-      console.log(reviewData)
+
       setReview(reviewData);
-      const commentsData = await getReviewComments(
-        reviewData.id
+
+      const commentsData = await getReviewComments(reviewData.id);
+      const comments: Comment[] = Array.isArray(commentsData)
+        ? commentsData
+        : [];
+
+      const nextGrouped = {
+        critical: comments.filter((comment) => comment.severity === "critical"),
+        warning: comments.filter((comment) => comment.severity === "warning"),
+        suggestion: comments.filter(
+          (comment) => comment.severity === "suggestion"
+        ),
+      };
+
+      setGrouped(nextGrouped);
+      setOpenSection(
+        severityOrder.find((key) => nextGrouped[key].length > 0) ?? ""
       );
-      console.log(commentsData)
-      setComments(commentsData);
-    } catch (err: any) {
-      const message = err.response?.data?.message;
-      if (err.response?.status === 404) {
-          // Shows the specific message:
-          // "GitHub user 'xyz' not found" OR
-          // "Repository 'xyz/repo' not found" OR
-          // "PR #42 not found in xyz/repo"
-          setError(message || "Not found. Check your inputs.");
-      } else {
-          setError(
-              message || "Something went wrong. Try again."
-          );
-      }
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" &&
+        err !== null &&
+        "response" in err &&
+        typeof err.response === "object" &&
+        err.response !== null &&
+        "data" in err.response &&
+        typeof err.response.data === "object" &&
+        err.response.data !== null &&
+        "message" in err.response.data
+          ? String(err.response.data.message)
+          : "Could not reach the review service. Make sure the Spring Boot backend is running on port 8080.";
+
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const critical = comments.filter(
-    (c) => c.severity === "critical"
-  ).length;
-  const warnings = comments.filter(
-    (c) => c.severity === "warning"
-  ).length;
-  const suggestions = comments.filter(
-    (c) => c.severity === "suggestion"
-  ).length;
+  const repoLabel = owner && repo ? `${owner}/${repo}` : "Repository";
 
-
-  const classes = "w-full border border-gray-300 px-4 py-2 rounded-lg text-gray-900 placeholder-gray-400 focus:border-blue-500"
-  
   return (
-    <main className="min-h-screen bg-gray-50 
-      px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-
-      <div className="max-w-3xl mx-auto w-full">
-
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl 
-            font-bold text-gray-900">
-            AI Code Reviewer
-          </h1>
-          <p className="text-sm sm:text-base 
-            text-gray-500 mt-1">
-            Enter a GitHub PR to get an instant 
-            AI-powered code review
-          </p>
-        </div>
-
-        {/* Input Form */}
-        <div className="bg-white rounded-xl 
-          shadow-sm border p-4 sm:p-6 mb-6">
-
-          <div className="grid grid-cols-1 
-            sm:grid-cols-2 lg:grid-cols-3 
-            gap-3 mb-4">
-
-            <div>
-              <label className="text-xs font-medium 
-                text-gray-600 mb-1 block">
-                GitHub Owner
-              </label>
-              <input
-                className={classes}
-                value={owner}
-                onChange={(e) => setOwner(e.target.value)}
-              />
+    <main className="min-h-screen bg-[#f7f3ec] text-slate-950">
+      <section className="border-b border-slate-200/80 bg-white">
+        <div className="mx-auto grid min-h-[92vh] w-full max-w-7xl grid-cols-1 items-center gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.02fr_0.98fr] lg:px-8">
+          <div className="space-y-7">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+              <Bot className="h-3.5 w-3.5" />
+              AI powered PR review cockpit
             </div>
 
-            <div>
-              <label className="text-xs font-medium 
-                text-gray-600 mb-1 block">
-                Repository
-              </label>
-              <input
-                className={classes}
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-              />
+            <div className="max-w-2xl space-y-4">
+              <h1 className="text-4xl font-black tracking-normal text-slate-950 sm:text-5xl lg:text-6xl">
+                Review pull requests before bugs reach production.
+              </h1>
+              <p className="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+                Paste a GitHub PR, run the analyzer, and get a focused issue
+                board with severity, files, line numbers, and suggested fixes.
+              </p>
             </div>
 
-            <div className="sm:col-span-2 lg:col-span-1">
-              <label className="text-xs font-medium 
-                text-gray-600 mb-1 block">
-                PR Number
-              </label>
-              <input
-                className={classes}
-                type="number"
-                value={prNumber}
-                onChange={(e) => setPrNumber(e.target.value)}
-              />
+            <div className="grid max-w-2xl grid-cols-3 gap-3">
+              <Metric label="Scan mode" value="Live" icon={Zap} />
+              <Metric label="Signal" value={healthLabel} icon={Code2} />
+              <Metric label="Findings" value={String(total)} icon={Search} />
             </div>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={loading}
-            className="w-full bg-blue-600 text-white 
-              rounded-lg py-2.5 text-sm sm:text-base
-              font-medium hover:bg-blue-700 
-              disabled:opacity-50 
-              disabled:cursor-not-allowed transition"
-          >
-            {loading
-              ? "Analyzing PR..."
-              : "Analyze PR"}
-          </button>
-
-          {error && (
-            <p className="text-red-500 text-sm mt-2">
-              {error}
-            </p>
-          )}
-        </div>
-
-        {review && (
-          <div>
-            <div className="bg-white rounded-xl 
-              shadow-sm border p-4 sm:p-6 mb-4">
-
-              <h2 className="font-semibold 
-                text-gray-800 text-sm sm:text-base 
-                mb-1 break-words">
-                {review.prTitle}
-              </h2>
-
-              <a
-                href={review.prUrl}
-                target="_blank"
-                className="text-blue-500 text-sm 
-                  hover:underline break-all"
-              >
-                View PR on GitHub
-              </a>
-
-              <div className="flex flex-wrap gap-6 mt-4">
-                <div className="text-center min-w-[60px]">
-                  <p className="text-2xl sm:text-3xl 
-                    font-bold text-red-600">
-                    {critical}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Critical
-                  </p>
+          <div className="relative">
+            <div className="absolute -inset-3 rounded-[2rem] border border-white/80 bg-white/60 shadow-2xl shadow-slate-300/50" />
+            <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 text-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
                 </div>
-                <div className="text-center min-w-[60px]">
-                  <p className="text-2xl sm:text-3xl 
-                    font-bold text-yellow-600">
-                    {warnings}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Warnings
-                  </p>
+                <span className="text-xs font-medium text-slate-400">
+                  ai-reviewer.local
+                </span>
+              </div>
+
+              <div className="space-y-5 p-5 sm:p-6">
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Pull request target
+                    </label>
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-slate-300">
+                      Cache enabled
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_0.7fr]">
+                    <Field
+                      label="Owner"
+                      placeholder="shivam"
+                      value={owner}
+                      onChange={setOwner}
+                    />
+                    <Field
+                      label="Repository"
+                      placeholder="ai-code-reviewer"
+                      value={repo}
+                      onChange={setRepo}
+                    />
+                    <Field
+                      label="PR"
+                      placeholder="42"
+                      type="number"
+                      value={prNumber}
+                      onChange={setPrNumber}
+                    />
+                  </div>
                 </div>
-                <div className="text-center min-w-[60px]">
-                  <p className="text-2xl sm:text-3xl 
-                    font-bold text-blue-600">
-                    {suggestions}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Suggestions
-                  </p>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => handleAnalyze(false)}
+                    disabled={loading}
+                    className="group inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/25 transition hover:-translate-y-0.5 hover:bg-emerald-300 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <GitPullRequest className="h-4 w-4" />
+                    )}
+                    {loading ? "Analyzing PR" : "Analyze PR"}
+                    {!loading && (
+                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAnalyze(true)}
+                    disabled={loading}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </button>
+                </div>
+
+                {error && (
+                  <div className="rounded-xl border border-rose-400/40 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                    {error}
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Preview
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-200">
+                        {repoLabel} {prNumber ? `#${prNumber}` : ""}
+                      </p>
+                    </div>
+                    <GitPullRequest className="h-5 w-5 text-emerald-300" />
+                  </div>
+
+                  <div className="space-y-3">
+                    {loading ? (
+                      <>
+                        <SkeletonRow />
+                        <SkeletonRow />
+                        <SkeletonRow />
+                      </>
+                    ) : (
+                      severityOrder.map((key) => {
+                        const config = severityConfig[key];
+                        const Icon = config.icon;
+
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-900 px-3 py-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`grid h-9 w-9 place-items-center rounded-lg ${config.pill}`}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </span>
+                              <span className="text-sm font-semibold text-slate-200">
+                                {config.label}
+                              </span>
+                            </div>
+                            <span className="text-xl font-black">
+                              {grouped[key].length}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
 
-            {comments.length === 0 ? (
-              <div className="bg-green-50 border 
-                border-green-200 rounded-xl p-6 
-                text-center">
-                <p className="text-green-700 
-                  font-medium text-sm sm:text-base">
-                  No issues found — clean code!
-                </p>
+      <section className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {review ? (
+          <div className="space-y-5">
+            <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end">
+              <div className="min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+                    {review.cached ? "Cached result" : "Fresh result"}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                    {review.repoName}
+                  </span>
+                </div>
+                <h2 className="break-words text-2xl font-black text-slate-950 sm:text-3xl">
+                  {review.prTitle}
+                </h2>
+                <a
+                  href={review.prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+                >
+                  View PR on GitHub
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm font-medium text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 sm:w-72"
+                    placeholder="Filter files, issues, fixes"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAnalyze(true)}
+                  disabled={loading}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Re-run
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {severityOrder.map((key) => {
+                const config = severityConfig[key];
+                const Icon = config.icon;
+                const isOpen = openSection === key;
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setOpenSection(isOpen ? "" : key)}
+                    className={`group rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${
+                      isOpen
+                        ? `${config.active} shadow-lg`
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="mb-5 flex items-center justify-between">
+                      <span className={`grid h-11 w-11 place-items-center rounded-xl ${config.pill}`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className={`h-2.5 w-2.5 rounded-full ${config.dot}`} />
+                    </div>
+                    <p className="text-3xl font-black text-slate-950">
+                      {grouped[key].length}
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-600">
+                      {config.label}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {total === 0 ? (
+              <div className="grid min-h-64 place-items-center rounded-3xl border border-emerald-200 bg-emerald-50 p-8 text-center">
+                <div className="max-w-md">
+                  <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500 text-white">
+                    <CheckCircle2 className="h-7 w-7" />
+                  </span>
+                  <h3 className="mt-4 text-2xl font-black text-emerald-950">
+                    No issues found
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-emerald-800">
+                    This PR came back clean from the analyzer.
+                  </p>
+                </div>
+              </div>
+            ) : filteredTotal === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+                No review comments match that filter.
               </div>
             ) : (
-              <div>
-                <h3 className="font-semibold 
-                  text-gray-700 text-sm sm:text-base 
-                  mb-3">
-                  {comments.length} Issues Found
-                </h3>
-                {comments.map((comment) => (
-                  <ReviewCard
-                    key={comment.id}
-                    comment={comment}
-                  />
-                ))}
+              <div className="space-y-4">
+                {severityOrder.map((key) => {
+                  const comments = filteredGrouped[key];
+                  const config = severityConfig[key];
+                  const Icon = config.icon;
+                  const isOpen = openSection === key;
+
+                  if (comments.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <section
+                      key={key}
+                      className={`overflow-hidden rounded-3xl border shadow-sm ${config.card}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenSection(isOpen ? "" : key)}
+                        className="flex w-full items-center justify-between gap-4 bg-white/75 px-5 py-4 text-left transition hover:bg-white"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className={`grid h-10 w-10 place-items-center rounded-xl ${config.pill}`}>
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          <div className="min-w-0">
+                            <h3 className="truncate text-base font-black text-slate-950">
+                              {config.label}
+                            </h3>
+                            <p className="text-xs font-semibold text-slate-500">
+                              {comments.length} visible finding
+                              {comments.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                        </div>
+                        {isOpen ? (
+                          <ChevronUp className="h-5 w-5 text-slate-500" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5 text-slate-500" />
+                        )}
+                      </button>
+
+                      {isOpen && (
+                        <div className="grid gap-3 p-3 sm:p-4">
+                          {comments.map((comment) => (
+                            <ReviewFinding
+                              key={comment.id}
+                              comment={comment}
+                              severityKey={key}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
               </div>
             )}
           </div>
+        ) : (
+          <div className="grid gap-4 border-b border-slate-200 pb-8 md:grid-cols-3">
+            <EmptyPanel
+              icon={GitPullRequest}
+              title="Connect a PR"
+              text="Enter owner, repository, and PR number in the analyzer above."
+            />
+            <EmptyPanel
+              icon={ShieldAlert}
+              title="Prioritize risk"
+              text="Critical findings, warnings, and suggestions are separated for faster triage."
+            />
+            <EmptyPanel
+              icon={FileCode2}
+              title="Jump to files"
+              text="Each finding keeps the file path, category, and line number visible."
+            />
+          </div>
         )}
-      </div>
+      </section>
     </main>
+  );
+}
+
+function Field({
+  label,
+  placeholder,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-slate-400">
+        {label}
+      </span>
+      <input
+        type={type}
+        className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300 focus:bg-white/[0.12] focus:ring-4 focus:ring-emerald-300/10"
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <Icon className="mb-3 h-5 w-5 text-emerald-700" />
+      <p className="text-xl font-black text-slate-950 sm:text-2xl">{value}</p>
+      <p className="mt-1 text-xs font-semibold text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-slate-900 px-3 py-3">
+      <div className="h-9 w-9 animate-pulse rounded-lg bg-white/10" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 w-28 animate-pulse rounded-full bg-white/10" />
+        <div className="h-2 w-20 animate-pulse rounded-full bg-white/10" />
+      </div>
+      <div className="h-6 w-8 animate-pulse rounded-full bg-white/10" />
+    </div>
+  );
+}
+
+function ReviewFinding({
+  comment,
+  severityKey,
+}: {
+  comment: Comment;
+  severityKey: SeverityKey;
+}) {
+  const config = severityConfig[severityKey];
+  const Icon = config.icon;
+
+  return (
+    <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg">
+      <div className="mb-3 flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${config.pill}`}>
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="break-words text-sm font-black text-slate-950">
+              {comment.issue}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold capitalize text-slate-600">
+                {comment.category}
+              </span>
+              {comment.lineNumber && (
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
+                  Line {comment.lineNumber}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <span className="break-all rounded-xl bg-slate-950 px-3 py-2 font-mono text-xs font-semibold text-slate-100">
+          {comment.fileName}
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+        <p className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+          Suggested fix
+        </p>
+        <p className="text-sm leading-6 text-emerald-950">{comment.fix}</p>
+      </div>
+    </article>
+  );
+}
+
+function EmptyPanel({
+  icon: Icon,
+  title,
+  text,
+}: {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-950 text-white">
+        <Icon className="h-5 w-5" />
+      </span>
+      <h3 className="mt-4 text-base font-black text-slate-950">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
+    </div>
   );
 }

@@ -11,4 +11,8 @@ public interface ReviewCommentRepository
     extends JpaRepository<ReviewComment, UUID> {
 
     List<ReviewComment> findByReviewId(UUID reviewId);
+
+    // Check if comments exist for a review
+    // If no comments saved, review is incomplete
+    boolean existsByReviewId(UUID reviewId);
 }

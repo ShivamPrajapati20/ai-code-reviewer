@@ -16,11 +16,18 @@ public class CorsConfig {
 
         // Allow requests from Next.js dev server
         config.setAllowedOrigins(
-            List.of("http://localhost:3000"));
+            List.of(
+                "http://localhost:3000",
+                "http://127.0.0.1:3000"));
 
         // Allow these HTTP methods
         config.setAllowedMethods(
-            List.of("GET", "POST", "PUT", "DELETE"));
+            List.of(
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "OPTIONS"));
 
         // Allow all headers
         config.setAllowedHeaders(List.of("*"));

@@ -1,19 +1,16 @@
 package com.shivam.aicodereviewer.exception;
 
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import java.util.Map;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-// Catches exceptions thrown anywhere in the app
-// and returns proper JSON error responses
-// instead of ugly stack traces
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Handles PR not found — returns 404
     @ExceptionHandler(PRNotFoundException.class)
-    public ResponseEntity<Map<String, String>> 
+    public ResponseEntity<Map<String, String>>
         handlePRNotFound(PRNotFoundException ex) {
 
         return ResponseEntity
@@ -24,15 +21,14 @@ public class GlobalExceptionHandler {
             ));
     }
 
-    // Handles any other unexpected error — returns 500
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, String>> 
-        handleGeneral(Exception ex) {
+    @ExceptionHandler(PRNotOpenException.class)
+    public ResponseEntity<Map<String, String>>
+        handlePRNotOpen(PRNotOpenException ex) {
 
         return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .status(HttpStatus.BAD_REQUEST)
             .body(Map.of(
-                "error", "Internal Server Error",
+                "error", "PR Not Open",
                 "message", ex.getMessage()
             ));
     }
@@ -57,6 +53,18 @@ public class GlobalExceptionHandler {
             .status(HttpStatus.NOT_FOUND)
             .body(Map.of(
                 "error", "Repository Not Found",
+                "message", ex.getMessage()
+            ));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, String>>
+        handleGeneral(Exception ex) {
+
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(Map.of(
+                "error", "Internal Server Error",
                 "message", ex.getMessage()
             ));
     }

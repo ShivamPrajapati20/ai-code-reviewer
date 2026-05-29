@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import java.util.List;
 import reactor.core.publisher.Mono;
+import com.fasterxml.jackson.databind.JsonNode;
 
 // @Slf4j gives us a free "log" variable
 // so we can do log.info(), log.error() etc.
@@ -197,6 +198,36 @@ public class GitHubService {
         } catch (Exception e) {
             log.warn("Repo not found: {}/{}", owner, repo);
             return false;
+        }
+    }
+
+    // Returns PR state: "open", "closed", "merged"
+    public String getPullRequestState(
+        String owner, String repo, Integer prNumber) {
+
+        try {
+            JsonNode pr = githubWebClient
+                .get()
+                .uri("/repos/{owner}/{repo}/pulls/{prNumber}",
+                    owner, repo, prNumber)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block();
+
+            if (pr == null) return "unknown";
+
+            // GitHub sets merged_at when PR is merged
+            boolean isMerged = !pr.path("merged_at")
+                .isNull();
+            String state = pr.path("state").asText();
+
+            if (isMerged) return "merged";
+            return state; // "open" or "closed"
+
+        } catch (Exception e) {
+            log.warn("Could not get PR state: {}", 
+                e.getMessage());
+            return "unknown";
         }
     }
 }
