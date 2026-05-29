@@ -99,7 +99,7 @@ const severityConfig = {
 
 const severityOrder: SeverityKey[] = ["critical", "warning", "suggestion"];
 
-export default function Home() {
+export function ReviewerDashboard() {
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
   const [prNumber, setPrNumber] = useState("");
@@ -121,6 +121,8 @@ export default function Home() {
         if (session.authenticated && session.user) {
           setUser(session.user);
           setOwner(session.user.login);
+        } else {
+          window.location.replace("/");
         }
       } finally {
         setAuthLoading(false);
@@ -264,6 +266,7 @@ export default function Home() {
     setOwner("");
     setReview(null);
     setGrouped(emptyGrouped);
+    window.location.href = "/";
   };
 
   const repoLabel = owner && repo ? `${owner}/${repo}` : "Repository";
@@ -280,7 +283,14 @@ export default function Home() {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f7f3ec] px-4 text-slate-950">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-700" />
+          Redirecting to sign in
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -667,6 +677,10 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+export default function Home() {
+  return <LoginScreen />;
 }
 
 function LoginScreen() {

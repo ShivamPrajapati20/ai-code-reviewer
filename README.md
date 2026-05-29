@@ -283,6 +283,13 @@ Frontend runs at:
 http://localhost:3000
 ```
 
+Routes:
+
+```text
+/          Public landing and GitHub sign-in page
+/dashboard Authenticated reviewer dashboard
+```
+
 The frontend proxies backend calls through:
 
 ```text

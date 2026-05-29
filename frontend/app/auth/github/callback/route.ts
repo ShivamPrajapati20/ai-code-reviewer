@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
   }
 
   const user = (await userResponse.json()) as GitHubUserResponse;
-  const response = NextResponse.redirect(new URL("/", appUrl));
+  const response = NextResponse.redirect(new URL("/dashboard", appUrl));
   response.cookies.delete(authCookies.state);
   response.cookies.set(
     authCookies.session,
