@@ -205,12 +205,14 @@ Create `frontend/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_APP_URL=http://127.0.0.1:3000
 GITHUB_CLIENT_ID=your_github_oauth_client_id
 GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 AUTH_SECRET=replace_with_a_long_random_string
 ```
 
 `AUTH_SECRET` signs the session cookie. Use a long random value.
+`NEXT_PUBLIC_APP_URL` must exactly match the URL used in the GitHub OAuth callback.
 
 ## GitHub OAuth Setup
 
@@ -230,6 +232,19 @@ Authorization callback URL: http://127.0.0.1:3000/auth/github/callback
 ```
 
 Copy the Client ID and Client Secret into `frontend/.env.local`.
+
+Important: GitHub requires the callback URL to match exactly. These are different URLs:
+
+```text
+http://localhost:3000/auth/github/callback
+http://127.0.0.1:3000/auth/github/callback
+```
+
+If your OAuth App uses `127.0.0.1`, open the app at `http://127.0.0.1:3000` and set:
+
+```env
+NEXT_PUBLIC_APP_URL=http://127.0.0.1:3000
+```
 
 ## Running The App
 
@@ -429,6 +444,7 @@ Use this checklist before opening a pull request:
 Check `frontend/.env.local`:
 
 ```env
+NEXT_PUBLIC_APP_URL=...
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
 AUTH_SECRET=...

@@ -14,7 +14,9 @@ export function GET(request: NextRequest) {
   }
 
   const state = createOAuthState();
-  const redirectUri = new URL("/auth/github/callback", request.url);
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const redirectUri = new URL("/auth/github/callback", appUrl);
   const githubUrl = new URL("https://github.com/login/oauth/authorize");
   githubUrl.searchParams.set("client_id", clientId);
   githubUrl.searchParams.set("redirect_uri", redirectUri.toString());
