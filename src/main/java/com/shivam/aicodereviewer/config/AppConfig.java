@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import com.shivam.aicodereviewer.service.GitHubService;
 
 @Configuration
 public class AppConfig {
@@ -38,4 +41,12 @@ public class AppConfig {
                 "application/json")
             .build();
     }
+
+    @Bean(name = "githubTools")
+    public ToolCallbackProvider githubTools(GitHubService githubService) {
+        return MethodToolCallbackProvider.builder()
+                .toolObjects(githubService)
+                .build();
+    }
+
 }

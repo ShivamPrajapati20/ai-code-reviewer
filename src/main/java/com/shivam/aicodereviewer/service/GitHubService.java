@@ -9,6 +9,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.List;
 import reactor.core.publisher.Mono;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.ai.tool.annotation.Tool;
 
 // @Slf4j gives us a free "log" variable
 // so we can do log.info(), log.error() etc.
@@ -17,7 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 public class GitHubService {
 
     private final WebClient githubWebClient;
-
+    
     // @Qualifier tells Spring which WebClient bean 
     // to inject — we have two (github and claude)
     // so we must specify which one we want here
@@ -90,6 +91,7 @@ public class GitHubService {
 
     // Posts a review comment back to the PR on GitHub
     // This is what makes results visible on the PR page
+    @Tool(description="Posts a review comment to a GitHub pull request. Call this when a PR review finding needs to be posted as a comment on the PR.")
     public void postPullRequestComment(
         String owner, String repo,
         Integer prNumber, String commentBody) {
